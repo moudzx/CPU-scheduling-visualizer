@@ -60,7 +60,10 @@ This project is suitable for:
 - Visual learning of scheduling algorithms
 
 ---
+## Live Demo
+https://moudzx.github.io/CPU-scheduling-visualizer/
 
+---
 ## Install Raylib
 <pre><code>
 sudo apt update
