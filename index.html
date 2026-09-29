@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CPU Scheduler Visualizer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600&display=swap">
+<style>
+:root {
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  --bg: #080818;
+  --panel: #120c28;
+  --field: #0c081c;
+  --line: #28143f;
+  --violet: #961ee6;
+  --accent: #c850ff;
+  --blue: #00d2ff;
+  --text: #e6e6ff;
+  --dim: #7a6fa0;
+  --red: #ff4646;
+  --green: #3cdc78;
+  --orange: #ffa028;
+  color-scheme: dark;
+}
+html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: "Outfit", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px; line-height: 1.4;
+}
+header { padding: 18px 20px 4px; }
+h1 { margin: 0; font-size: 20px; font-weight: 600; color: var(--accent); }
+header p { margin: 2px 0 0; color: var(--dim); }
+main {
+  display: grid; grid-template-columns: 400px minmax(0, 1fr);
+  gap: 12px; padding: 12px 20px 24px; max-width: 1400px; margin: 0 auto;
+}
+@media (max-width: 900px) { main { grid-template-columns: 1fr; padding: 12px; } }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+button {
+  font: inherit; color: var(--dim); background: #280a3c; border: 1px solid #50466e;
+  border-radius: 8px; padding: 6px 12px; cursor: pointer; min-height: 30px;
+}
+button:hover { color: var(--blue); border-color: var(--violet); background: #281046; }
+button.on { color: var(--text); background: #6414b4; border-color: var(--accent); }
+button.big { min-height: 38px; padding: 8px 16px; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+button.tog.on { color: var(--green); background: #145014; border-color: var(--green); }
+button.tog.off { color: var(--red); background: #3c0a0a; border-color: var(--red); }
+label.lbl { color: var(--dim); font-size: 12px; }
+input {
+  font: inherit; color: var(--text); background: var(--field);
+  border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; width: 100%; min-width: 0;
+}
+input:focus { border-color: var(--blue); }
+.q { width: 56px; }
+table.edit { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+table.edit th { text-align: left; font-weight: 400; color: var(--dim); font-size: 12px; padding: 2px 3px 6px; }
+table.edit td { padding: 3px; }
+table.edit tr:nth-child(even) td { background: #100a1e; }
+.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.hint { color: var(--dim); font-size: 12px; margin: 8px 0 0; }
+.tbar { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+.legend { display: flex; gap: 14px; color: var(--dim); font-size: 12px; align-items: center; }
+.legend i { display: inline-block; width: 14px; height: 12px; background: #282828; margin-right: 5px; vertical-align: -1px; }
+.legend b { display: inline-block; width: 2px; height: 12px; background: var(--red); margin-right: 5px; vertical-align: -1px; }
+#clock { font-size: 20px; color: var(--accent); font-variant-numeric: tabular-nums; }
+canvas { display: block; width: 100%; }
+.wrap { overflow-x: auto; }
+table.stats { width: 100%; border-collapse: collapse; margin-top: 10px; min-width: 360px; }
+table.stats th { text-align: left; font-weight: 400; color: var(--dim); font-size: 12px; padding: 4px 8px; border-bottom: 1px solid var(--line); }
+table.stats td { padding: 4px 8px; font-variant-numeric: tabular-nums; }
+table.stats tr:nth-child(even) td { background: #0e081c; }
+.avg { color: var(--accent); margin-top: 10px; min-height: 20px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>CPU scheduler visualizer</h1>
+  <p>Edit the processes, choose an algorithm, and press Play to watch the schedule run.</p>
+</header>
+<main>
+  <section class="panel" aria-label="Controls">
+    <div class="row" id="algos"></div>
+    <div class="row" id="opts"></div>
+    <table class="edit">
+      <thead><tr><th></th><th>Name</th><th>Arrival</th><th>Burst</th><th>Priority</th><th></th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div class="row"><button id="add">+ Add process</button></div>
+    <div class="row">
+      <button class="big" id="play">Play</button>
+      <button class="big" id="restart">Restart</button>
+      <button class="big" id="finish">Skip to end</button>
+    </div>
+    <div class="row" id="speeds"><span class="lbl" style="color:var(--dim);font-size:12px">Speed</span></div>
+    <p class="hint" id="desc"></p>
+  </section>
+
+  <section class="panel" aria-label="Schedule">
+    <div class="tbar">
+      <div class="legend"><span><i></i>Idle</span><span><b></b>Preempted</span></div>
+      <div id="clock">t = 0 / 0</div>
+    </div>
+    <div class="wrap"><canvas id="cv"></canvas></div>
+    <div class="wrap">
+      <table class="stats">
+        <thead><tr><th>Process</th><th>Arrival</th><th>Burst</th><th>Finish</th><th>Waiting</th><th>Turnaround</th></tr></thead>
+        <tbody id="stats"></tbody>
+      </table>
+    </div>
+    <div class="avg" id="avg"></div>
+  </section>
+</main>
+
+<script>
+(function () {
+  var PCOLS = ["#00d2ff","#b428ff","#ff50a0","#3cdc78","#ffa028","#78c8ff","#dc64ff","#ffdc3c","#50ffb4","#ff7850","#649fff","#c8ff64"];
+  var MAX_PROC = 12;
+  var ALGOS = ["FCFS", "SJF", "Round Robin", "Priority"];
+  var SPEEDS = [0.5, 1, 2, 4, 8];
+
+  var S = {
+    algo: 0, sjfPre: false, prioPre: false, quantum: 2,
+    procs: [
+      { name: "P1", arr: 0, burst: 5, prio: 2 },
+      { name: "P2", arr: 2, burst: 3, prio: 1 },
+      { name: "P3", arr: 4, burst: 1, prio: 3 },
+      { name: "P4", arr: 6, burst: 4, prio: 1 }
+    ],
+    slots: [], total: 0, res: [], avgW: 0, avgT: 0,
+    t: 0, running: false, done: false, speed: 1
+  };
+
+  /* ---------- scheduling algorithms ---------- */
+  function pushSlot(slots, pid, s, e, intr) {
+    var last = slots[slots.length - 1];
+    if (pid >= 0 && last && last.pid === pid && !last.intr && last.end === s) { last.end = e; last.intr = intr; return; }
+    slots.push({ pid: pid, start: s, end: e, intr: !!intr });
+  }
+  function nextArrival(P, done) {
+    var nt = Infinity;
+    for (var i = 0; i < P.length; i++) if (!done[i] && P[i].arr < nt) nt = P[i].arr;
+    return nt;
+  }
+  function finishProc(res, P, i, t) {
+    res[i].finish = t; res[i].tat = t - P[i].arr; res[i].wait = res[i].tat - P[i].burst;
+  }
+  function nonPreemptive(P, key, res) {
+    var slots = [], done = P.map(function () { return false; }), t = 0, fin = 0;
+    while (fin < P.length) {
+      var best = -1;
+      for (var i = 0; i < P.length; i++)
+        if (!done[i] && P[i].arr <= t && (best < 0 || key(P[i]) < key(P[best]))) best = i;
+      if (best < 0) { var nt = nextArrival(P, done); pushSlot(slots, -1, t, nt); t = nt; continue; }
+      pushSlot(slots, best, t, t + P[best].burst);
+      t += P[best].burst; finishProc(res, P, best, t); done[best] = true; fin++;
+    }
+    return slots;
+  }
+  function preemptive(P, keyRem, res) {
+    var rem = P.map(function (p) { return p.burst; }), done = P.map(function () { return false; });
+    var slots = [], t = 0, fin = 0, prev = -1;
+    while (fin < P.length) {
+      var best = -1;
+      for (var i = 0; i < P.length; i++)
+        if (!done[i] && P[i].arr <= t && (best < 0 || keyRem(P[i], rem[i]) < keyRem(P[best], rem[best]))) best = i;
+      if (best < 0) { var nt = nextArrival(P, done); pushSlot(slots, -1, t, nt); t = nt; prev = -1; continue; }
+      if (prev >= 0 && prev !== best && slots.length) slots[slots.length - 1].intr = true;
+      pushSlot(slots, best, t, t + 1);
+      rem[best]--; t++; prev = best;
+      if (rem[best] === 0) { finishProc(res, P, best, t); done[best] = true; fin++; prev = -1; }
+    }
+    return slots;
+  }
+  function roundRobin(P, q, res) {
+    var n = P.length, rem = P.map(function (p) { return p.burst; });
+    var ord = P.map(function (_, i) { return i; }).sort(function (a, b) { return P[a].arr - P[b].arr; });
+    var queue = [], inq = P.map(function () { return false; }), slots = [], t = 0, fin = 0;
+    function admit() {
+      ord.forEach(function (i) { if (!inq[i] && rem[i] > 0 && P[i].arr <= t) { queue.push(i); inq[i] = true; } });
+    }
+    admit();
+    while (fin < n) {
+      if (!queue.length) {
+        var nt = Infinity;
+        for (var i = 0; i < n; i++) if (!inq[i] && rem[i] > 0 && P[i].arr < nt) nt = P[i].arr;
+        if (nt === Infinity) break;
+        pushSlot(slots, -1, t, nt); t = nt; admit(); continue;
+      }
+      var cur = queue.shift(), run = Math.min(rem[cur], q), pre = rem[cur] > q;
+      pushSlot(slots, cur, t, t + run, pre);
+      t += run; rem[cur] -= run; admit();
+      if (rem[cur] === 0) { finishProc(res, P, cur, t); fin++; } else queue.push(cur);
+    }
+    return slots;
+  }
+
+  function recompute() {
+    var P = S.procs.map(function (p) {
+      return { name: p.name || "P?", arr: Math.max(0, p.arr | 0), burst: Math.max(1, p.burst | 0), prio: Math.max(1, p.prio | 0) };
+    });
+    var res = P.map(function () { return { finish: 0, wait: 0, tat: 0 }; });
+    var slots;
+    if (S.algo === 0) slots = nonPreemptive(P, function (p) { return p.arr; }, res);
+    else if (S.algo === 1) slots = S.sjfPre ? preemptive(P, function (p, r) { return r; }, res) : nonPreemptive(P, function (p) { return p.burst; }, res);
+    else if (S.algo === 2) slots = roundRobin(P, Math.max(1, S.quantum | 0), res);
+    else slots = S.prioPre ? preemptive(P, function (p) { return p.prio; }, res) : nonPreemptive(P, function (p) { return p.prio; }, res);
+    S.P = P; S.res = res; S.slots = slots;
+    S.total = slots.length ? slots[slots.length - 1].end : 0;
+    S.avgW = res.reduce(function (a, r) { return a + r.wait; }, 0) / P.length;
+    S.avgT = res.reduce(function (a, r) { return a + r.tat; }, 0) / P.length;
+    S.t = 0; S.running = false; S.done = false;
+    sizeCanvas(); syncControls(); frame(0, true);
+  }
+
+  /* ---------- controls ---------- */
+  var $ = function (id) { return document.getElementById(id); };
+  var DESC = function () {
+    return [
+      "Non-preemptive. Processes run in order of arrival.",
+      S.sjfPre ? "Preemptive (SRTF). The process with the shortest remaining time runs." : "Non-preemptive. The shortest burst is picked first.",
+      "Preemptive. Each process runs for one time quantum, then goes to the back of the queue.",
+      (S.prioPre ? "Preemptive" : "Non-preemptive") + " priority. A lower number means higher priority."
+    ][S.algo];
+  };
+
+  function buildAlgos() {
+    var box = $("algos"); box.innerHTML = "";
+    ALGOS.forEach(function (n, i) {
+      var b = document.createElement("button"); b.textContent = n;
+      b.className = S.algo === i ? "on" : "";
+      b.onclick = function () { S.algo = i; buildAlgos(); buildOpts(); recompute(); };
+      box.appendChild(b);
+    });
+  }
+  function toggle(label, on, fn) {
+    var b = document.createElement("button");
+    b.textContent = label; b.className = "tog " + (on ? "on" : "off"); b.onclick = fn; return b;
+  }
+  function buildOpts() {
+    var box = $("opts"); box.innerHTML = "";
+    if (S.algo === 1 || S.algo === 3) {
+      var key = S.algo === 1 ? "sjfPre" : "prioPre";
+      var l = document.createElement("span"); l.className = "lbl"; l.textContent = "Mode"; l.style.cssText = "color:var(--dim);font-size:12px";
+      box.appendChild(l);
+      box.appendChild(toggle("Non-preemptive", !S[key], function () { S[key] = false; buildOpts(); recompute(); }));
+      box.appendChild(toggle(S.algo === 1 ? "Preemptive (SRTF)" : "Preemptive", S[key], function () { S[key] = true; buildOpts(); recompute(); }));
+    } else if (S.algo === 2) {
+      var l2 = document.createElement("label"); l2.className = "lbl"; l2.textContent = "Quantum"; l2.htmlFor = "qin";
+      var inp = document.createElement("input"); inp.id = "qin"; inp.className = "q"; inp.type = "number"; inp.min = 1; inp.value = S.quantum;
+      inp.oninput = function () { S.quantum = Math.max(1, parseInt(inp.value, 10) || 1); recompute(); };
+      box.appendChild(l2); box.appendChild(inp);
+    }
+  }
+  function buildRows() {
+    var tb = $("rows"); tb.innerHTML = "";
+    S.procs.forEach(function (p, i) {
+      var tr = document.createElement("tr");
+      var td0 = document.createElement("td"); td0.innerHTML = '<span class="dot" style="background:' + PCOLS[i % 12] + '"></span>'; tr.appendChild(td0);
+      [["name", "text"], ["arr", "number"], ["burst", "number"], ["prio", "number"]].forEach(function (f) {
+        var td = document.createElement("td"), inp = document.createElement("input");
+        inp.type = f[1]; inp.value = p[f[0]]; inp.setAttribute("aria-label", f[0] + " for row " + (i + 1));
+        if (f[1] === "number") inp.min = f[0] === "arr" ? 0 : 1;
+        if (f[0] === "name") inp.maxLength = 7;
+        inp.oninput = function () {
+          p[f[0]] = f[1] === "number" ? (parseInt(inp.value, 10) || 0) : inp.value;
+          recompute();
+        };
+        td.appendChild(inp); tr.appendChild(td);
+      });
+      var td5 = document.createElement("td"), del = document.createElement("button");
+      del.textContent = "Del"; del.disabled = S.procs.length <= 1;
+      del.onclick = function () { S.procs.splice(i, 1); buildRows(); recompute(); };
+      td5.appendChild(del); tr.appendChild(td5); tb.appendChild(tr);
+    });
+    $("add").style.display = S.procs.length >= MAX_PROC ? "none" : "";
+  }
+  function buildSpeeds() {
+    var box = $("speeds");
+    SPEEDS.forEach(function (sp) {
+      var b = document.createElement("button"); b.textContent = sp + "x"; b.dataset.sp = sp;
+      b.onclick = function () { S.speed = sp; syncControls(); };
+      box.appendChild(b);
+    });
+  }
+  function syncControls() {
+    $("play").textContent = S.running ? "Pause" : (S.done ? "Replay" : "Play");
+    $("play").className = "big" + (S.running ? " on" : "");
+    Array.prototype.forEach.call($("speeds").querySelectorAll("button"), function (b) {
+      b.className = parseFloat(b.dataset.sp) === S.speed ? "on" : "";
+    });
+    $("desc").textContent = DESC();
+  }
+  $("add").onclick = function () {
+    var i = S.procs.length;
+    S.procs.push({ name: "P" + (i + 1), arr: 0, burst: 3, prio: 1 });
+    buildRows(); recompute();
+  };
+  $("play").onclick = function () {
+    if (S.done) { S.t = 0; S.done = false; }
+    S.running = !S.running; syncControls();
+  };
+  $("restart").onclick = function () { S.t = 0; S.running = false; S.done = false; syncControls(); frame(0, true); };
+  $("finish").onclick = function () { S.t = S.total; S.running = false; S.done = true; syncControls(); frame(0, true); };
+
+  /* ---------- canvas ---------- */
+  var cv = $("cv"), ctx = cv.getContext("2d");
+  var ROW = 34, BAR = 22, LBL = 46, TOP = 26, dpr = 1, cssW = 600, cssH = 300;
+
+  function sizeCanvas() {
+    dpr = window.devicePixelRatio || 1;
+    cssW = Math.max(360, cv.parentElement.clientWidth);
+    var n = S.procs.length;
+    cssH = TOP + n * ROW + 30 + 24 + 36 + 34;
+    cv.style.width = cssW + "px"; cv.style.height = cssH + "px";
+    cv.width = Math.round(cssW * dpr); cv.height = Math.round(cssH * dpr);
+  }
+  function hatch(x, y, w, h) {
+    ctx.fillStyle = "#232323"; ctx.fillRect(x, y, w, h);
+    ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+    ctx.strokeStyle = "rgba(120,120,120,.6)"; ctx.lineWidth = 1;
+    for (var xx = x - h; xx < x + w; xx += 6) { ctx.beginPath(); ctx.moveTo(xx, y + h); ctx.lineTo(xx + h, y); ctx.stroke(); }
+    ctx.restore();
+    ctx.strokeStyle = "#7a6fa0"; ctx.strokeRect(x + .5, y + .5, w - 1, h - 1);
+  }
+  function label(txt, x, y, w, col, size) {
+    ctx.font = size + "px Outfit, system-ui, sans-serif";
+    var tw = ctx.measureText(txt).width;
+    if (w > tw + 4) { ctx.fillStyle = col; ctx.textBaseline = "middle"; ctx.fillText(txt, x + (w - tw) / 2, y); }
+  }
+  function drawCanvas() {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
+    var P = S.P, n = P.length, bx = LBL + 6, bw = cssW - bx - 16, total = Math.max(1, S.total);
+    var ppt = bw / total, t = S.t;
+    ctx.textBaseline = "middle"; ctx.font = "10px Outfit, system-ui, sans-serif";
+
+    // ticks
+    var step = total > 60 ? 10 : total > 30 ? 5 : total > 15 ? 2 : 1;
+    for (var k = 0; k <= total; k += step) {
+      var tx = bx + k * ppt;
+      ctx.strokeStyle = "#50407a"; ctx.beginPath(); ctx.moveTo(tx + .5, TOP - 6); ctx.lineTo(tx + .5, TOP - 1); ctx.stroke();
+      ctx.fillStyle = "#7a6fa0"; var s = String(k), w = ctx.measureText(s).width;
+      ctx.fillText(s, tx - w / 2, 9);
+    }
+
+    // process rows
+    for (var i = 0; i < n; i++) {
+      var ry = TOP + i * ROW;
+      ctx.font = "13px Outfit, system-ui, sans-serif"; ctx.fillStyle = "#e6e6ff";
+      ctx.fillText(P[i].name, 4, ry + BAR / 2);
+      ctx.fillStyle = "#140a24"; ctx.fillRect(bx, ry, bw, BAR);
+
+      // waiting sliver
+      var first = S.total;
+      for (var s2 = 0; s2 < S.slots.length; s2++) if (S.slots[s2].pid === i) { first = S.slots[s2].start; break; }
+      if (first > P[i].arr && P[i].arr <= t) {
+        var wend = Math.min(first, t);
+        ctx.fillStyle = "rgba(180,180,0,.35)";
+        ctx.fillRect(bx + P[i].arr * ppt, ry + BAR / 2 - 2, (wend - P[i].arr) * ppt, 4);
+      }
+      // arrival marker
+      ctx.strokeStyle = "rgba(255,230,50,.8)"; ctx.beginPath();
+      ctx.moveTo(bx + P[i].arr * ppt + .5, ry); ctx.lineTo(bx + P[i].arr * ppt + .5, ry + BAR); ctx.stroke();
+
+      S.slots.forEach(function (sl) {
+        if (sl.pid !== i) return;
+        var vis = Math.min(sl.end, t); if (vis <= sl.start) return;
+        var sx = bx + sl.start * ppt, sw = Math.max(1, (vis - sl.start) * ppt);
+        ctx.fillStyle = PCOLS[i % 12]; ctx.fillRect(sx, ry, sw, BAR);
+        label(P[i].name, sx, ry + BAR / 2, sw, "#0a0a1e", 11);
+        if (sl.intr && vis >= sl.end) {
+          var ix = bx + sl.end * ppt;
+          ctx.strokeStyle = "#ff4646"; ctx.beginPath(); ctx.moveTo(ix + .5, ry); ctx.lineTo(ix + .5, ry + BAR); ctx.stroke();
+          ctx.fillStyle = "#ff4646"; ctx.beginPath(); ctx.moveTo(ix - 4, ry); ctx.lineTo(ix + 4, ry); ctx.lineTo(ix, ry + 7); ctx.fill();
+        }
+      });
+      ctx.strokeStyle = "#28143f"; ctx.strokeRect(bx + .5, ry + .5, bw - 1, BAR - 1);
+      if (S.res[i].finish > 0 && S.res[i].finish <= t) {
+        ctx.font = "13px Outfit, system-ui, sans-serif";
+        ctx.fillStyle = "#3cdc78"; ctx.fillText("\u2713", 4 + ctx.measureText(P[i].name).width + 4, ry + BAR / 2);
+      }
+    }
+
+    // idle row
+    var iy = TOP + n * ROW;
+    ctx.font = "11px Outfit, system-ui, sans-serif"; ctx.fillStyle = "#7a6fa0"; ctx.fillText("Idle", 4, iy + 7);
+    ctx.fillStyle = "#140a24"; ctx.fillRect(bx, iy, bw, 14);
+    S.slots.forEach(function (sl) {
+      if (sl.pid !== -1) return;
+      var vis = Math.min(sl.end, t); if (vis <= sl.start) return;
+      hatch(bx + sl.start * ppt, iy, Math.max(1, (vis - sl.start) * ppt), 14);
+    });
+    ctx.strokeStyle = "#28143f"; ctx.strokeRect(bx + .5, iy + .5, bw - 1, 13);
+
+    // playhead
+    var cx = bx + t * ppt, botY = iy + 14;
+    ctx.strokeStyle = "rgba(255,50,50,.8)"; ctx.beginPath(); ctx.moveTo(cx + .5, TOP - 2); ctx.lineTo(cx + .5, botY); ctx.stroke();
+    ctx.fillStyle = "#ff4646"; ctx.beginPath(); ctx.moveTo(cx - 5, TOP - 2); ctx.lineTo(cx + 5, TOP - 2); ctx.lineTo(cx, TOP + 6); ctx.fill();
+
+    // gantt
+    var gy = botY + 30, gh = 28;
+    ctx.strokeStyle = "#28143f"; ctx.beginPath(); ctx.moveTo(0, botY + 10.5); ctx.lineTo(cssW, botY + 10.5); ctx.stroke();
+    ctx.font = "12px Outfit, system-ui, sans-serif"; ctx.fillStyle = "#7a6fa0"; ctx.fillText("Gantt", 4, gy + gh / 2);
+    S.slots.forEach(function (sl) {
+      var vis = Math.min(sl.end, t); if (vis <= sl.start) return;
+      var gx = bx + sl.start * ppt, gw = Math.max(1, (vis - sl.start) * ppt);
+      if (sl.pid === -1) { hatch(gx, gy, gw, gh); label("---", gx, gy + gh / 2, gw, "#7a6fa0", 9); }
+      else {
+        ctx.fillStyle = PCOLS[sl.pid % 12]; ctx.fillRect(gx, gy, gw, gh);
+        label(P[sl.pid].name, gx, gy + gh / 2, gw, "#0a0a1e", 11);
+        if (sl.intr && vis >= sl.end) { ctx.strokeStyle = "#ff4646"; ctx.beginPath(); ctx.moveTo(gx + gw + .5, gy); ctx.lineTo(gx + gw + .5, gy + gh); ctx.stroke(); }
+      }
+    });
+    ctx.strokeStyle = "#28143f"; ctx.strokeRect(bx + .5, gy + .5, bw - 1, gh - 1);
+    // gantt time labels at slot boundaries
+    ctx.font = "9px Outfit, system-ui, sans-serif"; ctx.fillStyle = "#7a6fa0";
+    var lastX = -100;
+    S.slots.forEach(function (sl) {
+      [sl.start, sl.end].forEach(function (v) {
+        if (v > t) return;
+        var x = bx + v * ppt, s = String(v), w = ctx.measureText(s).width;
+        if (x - w / 2 > lastX + 4 || v === 0) { ctx.fillText(s, x - w / 2, gy + gh + 9); lastX = x + w / 2; }
+      });
+    });
+  }
+
+  function drawStats() {
+    var t = S.t, html = "";
+    S.P.forEach(function (p, i) {
+      var r = S.res[i], d = r.finish > 0 && r.finish <= t;
+      html += '<tr><td><span class="dot" style="background:' + PCOLS[i % 12] + '"></span> ' + esc(p.name) + "</td><td>" + p.arr + "</td><td>" + p.burst + "</td>" +
+        (d ? '<td style="color:var(--green)">' + r.finish + '</td><td style="color:var(--orange)">' + r.wait + '</td><td style="color:var(--blue)">' + r.tat + "</td>"
+           : '<td style="color:var(--dim)">--</td><td style="color:var(--dim)">--</td><td style="color:var(--dim)">--</td>') + "</tr>";
+    });
+    $("stats").innerHTML = html;
+    $("avg").textContent = S.done ? "Avg waiting: " + S.avgW.toFixed(2) + "    Avg turnaround: " + S.avgT.toFixed(2) : "";
+    $("clock").textContent = "t = " + Math.floor(t) + " / " + S.total;
+  }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+
+  /* ---------- loop ---------- */
+  var last = 0;
+  function frame(now, force) {
+    var dt = force ? 0 : Math.min(0.1, (now - last) / 1000);
+    if (S.running && !S.done) {
+      S.t += dt * S.speed;
+      if (S.t >= S.total) { S.t = S.total; S.done = true; S.running = false; syncControls(); }
+    }
+    drawCanvas(); drawStats();
+  }
+  function loop(now) { frame(now); last = now; requestAnimationFrame(loop); }
+
+  var rz; window.addEventListener("resize", function () { clearTimeout(rz); rz = setTimeout(function () { sizeCanvas(); frame(0, true); }, 80); });
+
+  buildAlgos(); buildOpts(); buildRows(); buildSpeeds(); recompute();
+  requestAnimationFrame(function (n) { last = n; loop(n); });
+})();
+</script>
+</body>
+</html>
