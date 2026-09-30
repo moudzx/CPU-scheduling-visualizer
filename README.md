@@ -1,5 +1,10 @@
 # cpu-scheduling-visualizer
 
+# [Website](https://moudzx.github.io/CPU-scheduling-visualizer)
+
+<img width="3072" height="1514" alt="Screenshot 2026-09-30 at 12-41-59 CPU Scheduler Visualizer" src="https://github.com/user-attachments/assets/7ecd93d0-ca5c-45c3-8b87-06c2f3d4e759" />
+
+# C (Raylib)
 ## Features
 ### CPU Scheduler
 
@@ -84,10 +89,6 @@ make -j4 && make install
 <code>gcc app.c -o app   -I$HOME/raylib-install/include   -L$HOME/raylib-install/lib   -lraylib -lm -lpthread -ldl -lGL -lX11 -lXrandr -lXi -lXinerama -lXcursor && ./app</code>
 
 or run: <code>bash compilation.sh</code>
-
-## Initial storyboard
-
-[Priority CPU-Scheduling.pptx](https://github.com/user-attachments/files/28986872/Priority.CPU-Scheduling.pptx)
 
 
 ## License
